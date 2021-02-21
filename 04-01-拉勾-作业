@@ -1,0 +1,66 @@
+# Part 4 · React 框架原理与实战
+## 模块一 React 设计原理解密及核心源码解读
+&nbsp;
+
+### 简答题
+&nbsp;
+### 一、请简述 React 16 版本中初始渲染的流程
+答：
+
+#### 1. jsx转换成react元素
+(1) babel-react会使jsx调用React.createElement
+
+(2) React.createElement会把jsx转换成react element（react element就是一个用来描述react元素的对象）。
+
+#### 2. render（协调层）此阶段负责创建Fiber数据结构并为Fiber节点打标记，标记当前Fiber节点要进行的DOM操作。
+&emsp;&emsp;首先为每一个react元素构建fiber对象（workInProgress Fiber树）创建此fiber对象对应的DOM对象，为fiber对象添加effectTag属性（用来记录当前Fiber要执行的DOM操作），然后在render结束后，fiber会被保存到fiberRoot中。
+
+代码层步骤：
+
+(1) 将子树渲染到容器中（初始化Fiber数据结构：创建fiberRoot及rootFiber）。
+
+(2) 判断是否为服务器端渲染，如果不是服务器端渲染，清空container容器中的节点。
+
+(3) 通过实例化ReactDOMBlockingRoot类创建LegacyRoot，创建LegacyRoot的Fiber数据结构。
+
+(4) 创建container，创建根节点对应的fiber对象。
+
+(5) 获取container的第一个子元素的实例对象。
+
+(6) 计算任务的过期时间，再根据任务过期时间创建Update任务，将任务（Update）存放于任务队列（updateQueue）中。判断任务是否为同步，调用同步任务入口。
+
+(7) 构建workInProgress Fiber树。
+
+#### 3. commit阶段（渲染层）
+(1) 先获取到render的结果，在fiberRoot中的新构建的workInProgress Fiber树中。
+
+(2) 根据fiber中的effectTag属性进行相应的DOM操作。
+&nbsp;
+### 二、为什么 React 16 版本中 render 阶段放弃了使用递归
+答：
+
+&emsp;&emsp;在16之前的版本中采用递归执行。递归耗内存，它使用JavaScript自身的执行栈，更新一旦开始，中途就无法中断。当VirtualDOM树的层级很深时，virtualDOM的比对就会长期占用JavaScript主线程，递归更新的时间就会超过16ms，由于JavaScript又是单线程的无法同时执行其他任务，所以在比对的过程中无法响应用户操作，无法即时执行元素动画，造成了页面卡顿的现象。
+
+解决方法：
+
+&emsp;&emsp;React16架构可以分为三层：Scheduler，Reconciler，Renderer，与之前不同的是Reconciler和Renderer不再交替执行，而是当Scheduler将任务交给Reconciler后，Reconciler会为变化的虚拟DOM打上代表增/删/更新的标记，整个Scheduler与Reconciler的工作都在内存中进行。只有当所有组件都完成Reconciler的工作，才会统一交给Renderer。并且采用双缓存用作统一替换，用户也不会看到更新不完全的真实dom。它放弃了JavaScript递归的方式进行virtualDOM的比对，而是采用循环模拟递归。而且比对的过程是利用浏览器的空闲时间完成的，不会长期占用主线程，这就解决了virtualDOM比对造成页面卡顿的问题。
+&nbsp;
+### 三、请简述 React 16 版本中 commit 阶段的三个子阶段分别做了什么事情
+答：
+
+(1) before mutation阶段（执行DOM操作前）：处理类组件的getSnapShotBeforeUpdate 生命周期函数。
+
+(2) mutation阶段（执行DOM操作）：将workInProgress Fiber树变成current Fiber树。
+
+(3) layout阶段（执行DOM操作后）：commitHookEffectList()阶段，调用类组件生命周期函数或者函数组件的钩子函数。
+&nbsp;
+### 四、请简述 workInProgress Fiber 树存在的意义是什么
+答：
+
+workInProgress Fiber：
+
+&emsp;&emsp;当发生更新时，React会在内存中重新构建一颗新的Fiber树，这颗正在构建的Fiber树叫做workInProgress Fiber树。在React中最多会同时存在两棵Fiber树，当前在屏幕中显示的内容对应的Fiber树叫做current Fiber树。
+
+意义：
+
+&emsp;&emsp;实现双缓冲技术，在双缓存技术中，workInProgress Fiber树就是即将要显示在页面中的Fiber树，当这颗Fiber树构建完成后，React会使用它直接替换current Fiber树达到快速更新DOM的目的，因为workInProgress Fiber树是在内存中构建的所以构建它的速度是非常快的，这样避免在React DOM更新过程中出现白屏。
